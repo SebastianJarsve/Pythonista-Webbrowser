@@ -214,5 +214,6 @@ class BrowserView (ui.View):
 		
 		self.save_history()
 			
-root_view = ui.load_view("ipad")
+view = 'ipad' if ui.get_screen_size()[0] >= 768 else 'iphone'
+root_view = ui.load_view(view)
 root_view.present(hide_title_bar=True)
