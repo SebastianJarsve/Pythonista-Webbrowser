@@ -1,7 +1,7 @@
 # coding: utf-8
 
-import ui, json, pickle, urlparse, console
-	
+import ui, json, pickle, urlparse, console, os
+
 class BrowserView (ui.View):
 	
 	def get_title(self):
@@ -25,9 +25,9 @@ class BrowserView (ui.View):
 			self['controlpanel']['addressbar'].alignment = ui.ALIGN_CENTER
 		
 	def load_url(self, url):
-		if ' ' in url:
+		if '.' not in url:
 			url = 'http://www.google.com/search?q={}'.format(url.replace(' ', '+'))
-		elif not url.startswith('http'):
+		elif urlparse.urlparse(url).netloc == '': #not url.startswith('http'):
 			url = 'http://'+url
 		self['webview'].load_url(url)
 		
@@ -52,6 +52,7 @@ class BrowserView (ui.View):
 		return history
 		
 	def init_buttons(self):
+		# Set 'BrowserView.button_tapped' as the action for all the controlpanel's subviews'
 		for subview in self['controlpanel'].subviews:
 			subview.action = self.button_tapped
 		
@@ -109,17 +110,54 @@ class BrowserView (ui.View):
 			json.dump(self.bookmarks, f, indent=4)
 			self['controlpanel']['favourite'].image = self.favourite_images[False]
 			
-	def show_bookmarks_menu(self):
-		popup = ui.TableView()
-		popup.width = 250
-		popup.height = 500
-		popup.name = 'Bookmarks'
-		popup.data_source = self
-		popup.delegate = self
-		button = self['controlpanel']['bookmarks']
-		x = button.x+button.width*0.5
-		y = button.y+button.height
-		popup.present('popover', popover_location=(x, y))
+	def popup_menu(self):
+		popup = ui.View(name='menu', frame=(0, 0, 320, 500))
+		toolbar = ui.View(frame=(-5, 0, 330, 100), name='toolbar')
+		toolbar.border_width = 0.5
+		toolbar.border_color = '#B2B2B2'
+		label = ui.Label()
+		label.text = 'Bookmarks'
+		label.alignment = ui.ALIGN_CENTER
+		label.frame = (0, 0, 320, 50)
+		label.name = 'title'
+		segment_ctrl = ui.SegmentedControl(name='segctrl')
+		segment_ctrl.segments = ['Bookmarks', 'History']
+		segment_ctrl.width = 170
+		segment_ctrl.center = popup.center
+		segment_ctrl.y = label.height
+		segment_ctrl.selected_index = 0
+		segment_ctrl.action = self.bookmarks_or_history
+		toolbar.add_subview(label)
+		toolbar.add_subview(segment_ctrl)
+		popup.add_subview(toolbar)
+		data_source = ui.ListDataSource(sorted(self.bookmarks.keys()))
+		popup.add_subview(self.list_bookmarks_and_history(data_source, width=320, height=toolbar.superview.height-toolbar.height, y=toolbar.height, name='bookmarks'))
+		
+		x, y = self['controlpanel']['bookmarks'].center
+		popup.present('popover', popover_location=(x, y), hide_title_bar=True)
+		
+	def bookmarks_or_history(self, sender):
+		toolbar = sender.superview
+		if sender.selected_index == 0:
+			toolbar['title'].text = 'Bookmarks'
+			data_source = ui.ListDataSource(sorted(self.bookmarks.keys()))
+			tv = self.list_bookmarks_and_history(data_source, width=320, height=toolbar.superview.height-toolbar.height, y=toolbar.height, name='bookmarks')
+			toolbar.superview.remove_subview(toolbar.superview['history'])
+		else: 
+			toolbar['title'].text = 'History'
+			data_source = ui.ListDataSource(self.history[::-1])
+			tv = self.list_bookmarks_and_history(data_source, width=320, height=toolbar.superview.height-toolbar.height, y=toolbar.height, name='history')
+			toolbar.superview['bookmarks'].hidden=True
+			toolbar.superview.remove_subview(toolbar.superview['bookmarks'])
+		sender.superview.superview.add_subview(tv)
+		
+	def list_bookmarks_and_history(self, data_source, **kwargs):
+		tv = ui.TableView()
+		tv.data_source = data_source
+		tv.delegate = self
+		for k, v in kwargs.items():
+			setattr(tv, k, v)
+		return tv
 		
 	def show_more_menu(self):
 		popup = ui.TableView()
@@ -140,7 +178,7 @@ class BrowserView (ui.View):
 			else: 
 				self.save_bookmark()
 		elif sender.name == 'bookmarks':
-			self.show_bookmarks_menu() 
+			self.popup_menu()
 		elif sender.name == 'more':
 			self.show_more_menu()
 		else: 
@@ -157,6 +195,8 @@ class BrowserView (ui.View):
 		if tableview.name == 'Bookmarks':
 			cell = ui.TableViewCell()
 			cell.text_label.text = sorted(self.bookmarks.keys())[row]
+			cell.image_view.image = ui.Image.named('ionicons-ios7-bookmarks-outline-32')
+			cell.image_view.tint_color = '#66CCFF'
 			return cell
 			
 		elif tableview.name == 'More':
@@ -167,10 +207,14 @@ class BrowserView (ui.View):
 			
 	@ui.in_background
 	def tableview_did_select(self, tableview, section, row):
-		if tableview.name == 'Bookmarks':
+		if tableview.name == 'bookmarks':
 			url = self.bookmarks[sorted(self.bookmarks.keys())[row]]
 			self.load_url(url)
-			tableview.close()
+			tableview.superview.close()
+		elif tableview.name == 'history':
+			url = tableview.data_source.items[row]
+			tableview.superview.close()
+			self.load_url(url)
 		elif tableview.name == 'More':
 			tableview.close()
 			console.hud_alert('No settings yet...', 'error', 1)
