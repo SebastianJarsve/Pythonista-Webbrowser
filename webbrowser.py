@@ -20,8 +20,7 @@ class BrowserView (ui.View):
 		return urlparse.urlparse(url).netloc
 
 	def set_url(self, url=None):
-		if url is None:
-			url = self.get_url()
+		url = url or self.get_url()
 		addr_bar = self['controlpanel']['addressbar']
 		if self.addressbar_is_editing:
 			addr_bar.text = url
